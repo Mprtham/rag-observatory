@@ -1,0 +1,42 @@
+[
+  {
+    "question": "What is customer acquisition cost (CAC) and how is it calculated?",
+    "ground_truth": "CAC is the total cost of acquiring a new customer, calculated by dividing total sales and marketing spend by the number of new customers acquired in the same period."
+  },
+  {
+    "question": "What statistical test should be used for A/B tests with conversion rate metrics?",
+    "ground_truth": "Use a two-proportion z-test or chi-square test for conversion rate metrics. Ensure minimum sample size is met before calling statistical significance."
+  },
+  {
+    "question": "What is the minimum detectable effect (MDE) in A/B testing?",
+    "ground_truth": "MDE is the smallest relative change in a metric that an experiment is powered to detect, typically set at 5-10% for conversion metrics with 80% statistical power."
+  },
+  {
+    "question": "How is Monthly Active Users (MAU) defined in our analytics framework?",
+    "ground_truth": "MAU counts distinct users who perform at least one meaningful action (not just a session) within a rolling 30-day window."
+  },
+  {
+    "question": "What are the data quality dimensions we track?",
+    "ground_truth": "We track completeness, accuracy, consistency, timeliness, and uniqueness as the five core data quality dimensions."
+  },
+  {
+    "question": "What is the recommended SQL style for CTEs in BigQuery?",
+    "ground_truth": "CTEs should use snake_case names, each on its own line, with a blank line between each CTE block. Avoid nesting CTEs deeper than 3 levels."
+  },
+  {
+    "question": "How long should an A/B test run before reading results?",
+    "ground_truth": "Tests should run for at least one full business cycle (typically 2 weeks) and until the minimum sample size is reached, whichever is longer. Never stop early due to positive results."
+  },
+  {
+    "question": "What is user retention rate and how is it computed?",
+    "ground_truth": "Retention rate is the percentage of users from a cohort who return in a subsequent period. Day-N retention = (users from cohort still active on day N) / (cohort size) × 100."
+  },
+  {
+    "question": "What triggers a data quality alert in our pipelines?",
+    "ground_truth": "Alerts trigger when null rate exceeds threshold, row count drops more than 20% vs 7-day average, duplicate primary keys are detected, or freshness SLA is breached."
+  },
+  {
+    "question": "What is the difference between a metric and a KPI?",
+    "ground_truth": "A metric is any quantitative measure. A KPI (Key Performance Indicator) is a metric directly tied to a strategic business objective with a defined target and owner."
+  }
+]

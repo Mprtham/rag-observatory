@@ -1,0 +1,117 @@
+name: RAG Quality Gate
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"   # nightly full eval at 06:00 UTC
+
+jobs:
+  # ── Quick smoke test on PRs ────────────────────────────────────────────────
+  quality-gate-smoke:
+    name: Quality Gate (smoke — 3 samples)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ingest knowledge base
+        env:
+          GROQ_API_KEY:          ${{ secrets.GROQ_API_KEY }}
+          LANGFUSE_PUBLIC_KEY:   ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY:   ${{ secrets.LANGFUSE_SECRET_KEY }}
+        run: python scripts/ingest.py
+
+      - name: Run quality gate (3 samples)
+        env:
+          GROQ_API_KEY:          ${{ secrets.GROQ_API_KEY }}
+          LANGFUSE_PUBLIC_KEY:   ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY:   ${{ secrets.LANGFUSE_SECRET_KEY }}
+          FAITHFULNESS_THRESHOLD:     "0.80"
+          ANSWER_RELEVANCY_THRESHOLD: "0.75"
+        run: pytest evals/test_gate.py -v --tb=short
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-smoke
+          path: evals/eval_results.json
+
+  # ── Full eval on merge to main + nightly ──────────────────────────────────
+  quality-gate-full:
+    name: Quality Gate (full — 10 samples)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ingest knowledge base
+        env:
+          GROQ_API_KEY:          ${{ secrets.GROQ_API_KEY }}
+          LANGFUSE_PUBLIC_KEY:   ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY:   ${{ secrets.LANGFUSE_SECRET_KEY }}
+        run: python scripts/ingest.py
+
+      - name: Run full quality gate
+        env:
+          GROQ_API_KEY:          ${{ secrets.GROQ_API_KEY }}
+          LANGFUSE_PUBLIC_KEY:   ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY:   ${{ secrets.LANGFUSE_SECRET_KEY }}
+          FAITHFULNESS_THRESHOLD:     "0.80"
+          ANSWER_RELEVANCY_THRESHOLD: "0.75"
+          EVAL_FULL: "1"
+        run: pytest evals/test_gate.py -v --tb=long
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-full
+          path: evals/eval_results.json
+
+      - name: Comment eval summary on commit
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('evals/eval_results.json'));
+            const agg = results.aggregate;
+            const body = [
+              '## 📊 RAG Eval Report',
+              `| Metric | Score | Gate |`,
+              `|--------|-------|------|`,
+              `| Faithfulness | ${agg.faithfulness.toFixed(3)} | ≥ 0.80 |`,
+              `| Answer Relevancy | ${agg.answer_relevancy.toFixed(3)} | ≥ 0.75 |`,
+              `| Context Recall | ${agg.context_recall.toFixed(3)} | — |`,
+              `| Samples | ${agg.num_samples} | — |`,
+            ].join('\n');
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body
+            });
