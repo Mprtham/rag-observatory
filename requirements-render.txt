@@ -1,0 +1,22 @@
+# Lean requirements for Render free tier (no PyTorch / sentence-transformers).
+# Full deps (sentence-transformers, ragas, streamlit) in requirements.txt for local dev.
+
+# ── Core API ─────────────────────────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# ── LLM ──────────────────────────────────────────────────────────────────────
+groq==0.13.0
+
+# ── Vector Store (ONNX embeddings built-in — no PyTorch) ─────────────────────
+chromadb==0.6.3
+onnxruntime==1.20.1
+
+# ── Observability ─────────────────────────────────────────────────────────────
+langfuse==2.58.2
+
+# ── HTTP ─────────────────────────────────────────────────────────────────────
+httpx==0.28.1

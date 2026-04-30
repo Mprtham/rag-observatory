@@ -1,11 +1,6 @@
 """
 Ingestion script — chunks docs/ markdown files and loads into ChromaDB.
-
-Chunking strategy:
-  - Split on headings and double newlines
-  - Max chunk size: 500 tokens (≈ 400 words)
-  - Overlap: 50 words between chunks
-  - Each chunk stores source filename as metadata
+Uses ChromaDB's built-in ONNX embedding (no PyTorch required).
 
 Usage:
     python scripts/ingest.py             # ingest docs/ directory
@@ -22,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 from app.config import get_settings
 
@@ -36,7 +31,6 @@ OVERLAP    = 50     # words
 # ── Chunking ──────────────────────────────────────────────────────────────────
 
 def split_into_chunks(text: str, chunk_words: int = CHUNK_SIZE, overlap: int = OVERLAP) -> list[str]:
-    """Simple word-window chunker with overlap."""
     words = text.split()
     chunks = []
     start = 0
@@ -48,21 +42,14 @@ def split_into_chunks(text: str, chunk_words: int = CHUNK_SIZE, overlap: int = O
 
 
 def load_markdown_file(path: Path) -> list[dict]:
-    """Load a markdown file and return a list of chunk dicts."""
     raw = path.read_text(encoding="utf-8")
-    # Strip markdown syntax for cleaner embeddings
-    text = re.sub(r"#{1,6}\s+", "", raw)          # headings
-    text = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", text)  # bold/italic
-    text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text) # code spans
+    text = re.sub(r"#{1,6}\s+", "", raw)
+    text = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", text)
+    text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-
     chunks = split_into_chunks(text)
     return [
-        {
-            "text":     chunk,
-            "source":   path.name,
-            "chunk_id": f"{path.stem}_{i}",
-        }
+        {"text": chunk, "source": path.name, "chunk_id": f"{path.stem}_{i}"}
         for i, chunk in enumerate(chunks)
     ]
 
@@ -70,9 +57,7 @@ def load_markdown_file(path: Path) -> list[dict]:
 # ── ChromaDB ─────────────────────────────────────────────────────────────────
 
 def get_collection(reset: bool = False) -> chromadb.Collection:
-    embed_fn = SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2", device="cpu"
-    )
+    embed_fn = DefaultEmbeddingFunction()
     client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
 
     if reset:
@@ -110,7 +95,6 @@ def ingest(reset: bool = False) -> None:
     for path in md_files:
         chunks = load_markdown_file(path)
         print(f"  {path.name}: {len(chunks)} chunks")
-
         new_chunks = [c for c in chunks if c["chunk_id"] not in existing_ids]
         skipped += len(chunks) - len(new_chunks)
 
@@ -132,6 +116,6 @@ def ingest(reset: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--reset", action="store_true", help="Wipe collection before ingesting")
+    parser.add_argument("--reset", action="store_true")
     args = parser.parse_args()
     ingest(reset=args.reset)

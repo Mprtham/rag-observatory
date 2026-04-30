@@ -1,22 +1,20 @@
 """
-ChromaDB retriever with sentence-transformer embeddings.
-Hybrid search = dense vector search (ANN) over the same collection.
-BM25 upgrade path: swap get_collection() for a BM25Retriever and merge scores.
+ChromaDB retriever — ONNX embeddings (no PyTorch).
+
+Uses ChromaDB's built-in DefaultEmbeddingFunction (all-MiniLM-L6-v2 via
+onnxruntime) so the API runs in ~150 MB RAM instead of ~450 MB with PyTorch.
 """
 
 from __future__ import annotations
 
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from app.config import get_settings
 
 settings = get_settings()
 
-# Singleton — loaded once at import time
-_embed_fn = SentenceTransformerEmbeddingFunction(
-    model_name="all-MiniLM-L6-v2",   # 80 MB, fast, good quality
-    device="cpu",
-)
+# Singleton embedding function — ONNX, no PyTorch required
+_embed_fn = DefaultEmbeddingFunction()
 
 _chroma_client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
 
@@ -39,6 +37,7 @@ def retrieve(query: str, top_k: int | None = None) -> list[dict]:
             "text":     str,
             "source":   str,
             "distance": float,   # cosine distance (lower = closer)
+            "score":    float,   # 1 - distance (higher = more relevant)
         }
     """
     k = top_k or settings.retrieval_top_k
@@ -67,6 +66,7 @@ def retrieve(query: str, top_k: int | None = None) -> list[dict]:
                 "text":     doc,
                 "source":   meta.get("source", "unknown"),
                 "distance": round(dist, 4),
+                "score":    round(1.0 - dist, 4),   # for reranker fallback
             }
         )
     return chunks
