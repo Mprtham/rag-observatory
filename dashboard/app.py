@@ -72,7 +72,10 @@ def fetch_traces(limit: int = 200) -> pd.DataFrame:
                 "model":                 meta.get("model", "unknown"),
                 "num_contexts":          meta.get("num_contexts"),
             })
-        return pd.DataFrame(rows).dropna(subset=["total_latency_ms"])
+        df_out = pd.DataFrame(rows)
+        if df_out.empty or "total_latency_ms" not in df_out.columns:
+            return pd.DataFrame()
+        return df_out.dropna(subset=["total_latency_ms"])
     except Exception as e:
         st.error(f"Failed to fetch traces: {e}")
         return pd.DataFrame()
