@@ -17,3 +17,6 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cro
 COPY . .
 
 EXPOSE 8000 8501
+
+# Ingest knowledge base then start API
+CMD ["sh", "-c", "python scripts/ingest.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
