@@ -1,33 +1,51 @@
 """
-Cross-encoder reranker.
+Cross-encoder reranker — lazy-loaded, memory-aware.
 
-Takes the top-k dense-retrieved chunks and re-scores them with a
-cross-encoder model (query + chunk fed jointly → single relevance score).
-This catches cases where the bi-encoder embedding missed semantic overlap.
+Set DISABLE_RERANKER=true (env var) to skip PyTorch/CrossEncoder entirely.
+Fallback: return top_n chunks sorted by ChromaDB cosine similarity score.
+This keeps the API alive on memory-constrained hosts (e.g. Render free tier).
 
-Model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  - ~70 MB, fast on CPU, solid precision on passage retrieval.
+Full reranking (DISABLE_RERANKER unset or false):
+  Model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  ~120 MB on disk, solid precision on passage retrieval.
 """
 
 from __future__ import annotations
 
-from sentence_transformers import CrossEncoder
+import os
 
-_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
+_model = None  # lazy — only load when first call arrives
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import CrossEncoder  # noqa: PLC0415
+        _model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
+    return _model
 
 
 def rerank(query: str, chunks: list[dict], top_n: int) -> list[dict]:
     """
-    Rerank `chunks` by cross-encoder score and return top_n.
+    Rerank chunks by relevance and return top_n.
 
-    Each chunk dict must have a "text" key.
-    Output dicts gain a "rerank_score" key (higher = more relevant).
+    When DISABLE_RERANKER=true: sorts by ChromaDB cosine score (no PyTorch).
+    When enabled: uses cross-encoder model for precise reranking.
     """
     if not chunks:
         return []
 
+    if os.getenv("DISABLE_RERANKER", "false").lower() == "true":
+        # Lightweight fallback — ChromaDB already returns cosine similarity
+        sorted_chunks = sorted(chunks, key=lambda c: c.get("score", 0.0), reverse=True)
+        return [
+            {**c, "rerank_score": round(float(c.get("score", 0.0)), 4)}
+            for c in sorted_chunks[:top_n]
+        ]
+
+    model = _get_model()
     pairs = [(query, c["text"]) for c in chunks]
-    scores = _model.predict(pairs)          # returns numpy array
+    scores = model.predict(pairs)
 
     ranked = sorted(
         zip(chunks, scores.tolist()),
@@ -35,8 +53,7 @@ def rerank(query: str, chunks: list[dict], top_n: int) -> list[dict]:
         reverse=True,
     )
 
-    result = []
-    for chunk, score in ranked[:top_n]:
-        result.append({**chunk, "rerank_score": round(float(score), 4)})
-
-    return result
+    return [
+        {**chunk, "rerank_score": round(float(score), 4)}
+        for chunk, score in ranked[:top_n]
+    ]
